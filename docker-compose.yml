@@ -1,0 +1,11 @@
+services:
+  app:
+    build:
+      dockerfile: dev.Dockerfile
+      context: .
+    ports:
+      - "${APP_PORT:-8000}:80"
+    volumes:
+      - .:/app
+    env_file:
+      - .env
