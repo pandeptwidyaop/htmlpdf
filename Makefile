@@ -9,6 +9,9 @@ up:
 ps:
 	docker compose -p $(PROJECT_NAME) ps
 
+exec:
+	docker compose -p $(PROJECT_NAME) exec app sh
+
 down:
 	docker compose -p $(PROJECT_NAME) down
 
