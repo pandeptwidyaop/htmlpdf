@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -21,6 +22,7 @@ type SocketConnection struct {
 	Conn      *websocket.Conn
 	Mutex     *sync.Mutex
 	IsClosing bool
+	Files     []string
 }
 
 type Message struct {
@@ -149,6 +151,12 @@ func InitWorker(ctx context.Context) {
 		case conn := <-UnregisterCh:
 			wg.Add(1)
 			if _, ok := Clients[conn]; ok {
+				cl := Clients[conn]
+				cl.IsClosing = true
+				err := removeFile(cl.Files)
+				if err != nil {
+					log.Println(err)
+				}
 				delete(Clients, conn)
 			}
 			wg.Done()
@@ -162,6 +170,7 @@ func InitWorker(ctx context.Context) {
 
 func HandleMessage(p *Postman) {
 	var msg Message
+	cl := Clients[p.From]
 	err := json.Unmarshal(p.Message, &msg)
 	if err != nil {
 		log.Println(err)
@@ -173,11 +182,13 @@ func HandleMessage(p *Postman) {
 	}
 
 	if msg.Type == "render" {
-		url, err := renderPdf(msg.Message)
+		url, fileName, err := renderPdf(msg.Message)
 		if err != nil {
 			log.Println(err)
 			err = sendMessage(p.From, "error", "error during render: "+err.Error())
 		}
+
+		cl.Files = append(cl.Files, fileName)
 
 		err = sendMessage(p.From, "rendered", url)
 	} else {
@@ -189,6 +200,12 @@ func HandleMessage(p *Postman) {
 }
 
 func sendMessage(c *websocket.Conn, t, message string) error {
+	client := Clients[c]
+
+	if client.IsClosing {
+		return errors.New("client is closing")
+	}
+
 	err := c.WriteJSON(map[string]interface{}{
 		"type":    t,
 		"message": message,
@@ -199,11 +216,11 @@ func sendMessage(c *websocket.Conn, t, message string) error {
 	return nil
 }
 
-func renderPdf(content string) (string, error) {
+func renderPdf(content string) (string, string, error) {
 
 	f, err := saveToTemp(content)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	defer func(name string) {
 		err := os.Remove(name)
@@ -214,10 +231,10 @@ func renderPdf(content string) (string, error) {
 
 	filename, err := render(f)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 
-	return fmt.Sprintf("pdfjs/web/viewer.html?file=/storage/%s", filename), nil
+	return fmt.Sprintf("pdfjs/web/viewer.html?file=/storage/%s", filename), filename, nil
 }
 
 func saveToTemp(content string) (*os.File, error) {
@@ -246,4 +263,15 @@ func render(in *os.File) (string, error) {
 		return "", err
 	}
 	return name, nil
+}
+
+func removeFile(files []string) error {
+	for _, f := range files {
+		err := os.Remove(fmt.Sprintf("public/storage/%s", f))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
