@@ -41,6 +41,6 @@ COPY --from=wkhtmltopdf /lib/libwkhtmltox* /lib/
 WORKDIR /app
 
 COPY --from=builder /build/dist/htmlpdf .
-COPY --from=builder /build/public .
+COPY --from=builder /build/public ./public
 
 CMD ["/app/htmlpdf"]
