@@ -1,12 +1,14 @@
-FROM golang:1.22-alpine as builder
+FROM golang:1.22-alpine AS builder
+
+WORKDIR /build
 
 COPY . .
 
 RUN go mod download
 
-RUN go build -o dist/app .
+RUN go build -ldflags="-s -w" -o dist/htmlpdf .
 
-FROM surnet/alpine-wkhtmltopdf:3.20.2-0.12.6-full as wkhtmltopdf
+FROM surnet/alpine-wkhtmltopdf:3.20.2-0.12.6-full AS wkhtmltopdf
 FROM alpine:latest
 
 # Install dependencies for wkhtmltopdf
@@ -38,6 +40,7 @@ COPY --from=wkhtmltopdf /lib/libwkhtmltox* /lib/
 
 WORKDIR /app
 
-COPY --from=builder dist/app .
+COPY --from=builder /build/dist/htmlpdf .
+COPY --from=builder /build/public .
 
-CMD ["/app/app"]
+CMD ["/app/htmlpdf"]
